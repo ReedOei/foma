@@ -99,7 +99,8 @@ foma_fsm_flatten.restype = POINTER(FSTstruct)
 foma_apply_set_space_symbol = foma.apply_set_space_symbol
 foma_fsm_read_binary_file = foma.fsm_read_binary_file
 foma_fsm_read_binary_file.restype = POINTER(FSTstruct)
-
+foma_fsm_read_prolog = foma.fsm_read_prolog
+foma_fsm_read_prolog.restype = POINTER(FSTstruct)
 
 """Define functions."""
 foma_add_defined = foma.add_defined
@@ -164,7 +165,7 @@ class FST(object):
             retval = foma.add_defined_function(c_void_p(cls.functiondefinitions.deffhandle), c_char_p(name), c_char_p(regex), c_int(numargs))
         else:
             raise ValueError("Expected regex as definition")
-         
+
     @classmethod
     def wordlist(cls, wordlist, minimize = True):
         """Create FSM directly from wordlist.
@@ -180,13 +181,30 @@ class FST(object):
         return fsm
 
     @classmethod
-    def load(cls, filename):
+    def load_prolog(cls, filename):
+        """Load binary FSM from file in the Prolog format."""
+        fsm = cls()
+        fsm.fsthandle = foma_fsm_read_prolog(c_char_p(FST.encode(filename)))
+        if not fsm.fsthandle:
+            raise ValueError("File error.")
+        return fsm
+
+    @classmethod
+    def load_binary(cls, filename):
         """Load binary FSM from file."""
         fsm = cls()
         fsm.fsthandle = foma_fsm_read_binary_file(c_char_p(FST.encode(filename)))
         if not fsm.fsthandle:
             raise ValueError("File error.")
         return fsm
+
+    @classmethod
+    def load(cls, filename):
+        """Load FSM from file using Prolog format if the file's extension is .pl and binary otherwise."""
+        if filename.endswith(".pl"):
+            return cls.load_prolog(filename)
+        else:
+            return cls.load_binary(filename)
 
     @staticmethod
     def encode(string):
@@ -233,7 +251,7 @@ class FST(object):
             else:
                 result.append(output)
                 output = foma_apply_down(c_void_p(self.getitemapplyer), None)
-            
+
     def __del__(self):
         if self.fsthandle:
             foma_fsm_destroy(self.fsthandle)
@@ -262,13 +280,13 @@ class FST(object):
             return self.fsthandle.contents.pathcount
         else:
             raise ValueError("FSM not defined")
-        
+
     def __add__(self, other):
         return self.concat(other)
 
     def __sub__(self, other):
         return self.minus(other)
-    
+
     def __le__(self, other):
         if self.fsthandle and other.fsthandle:
             return bool(c_int(foma_fsm_isempty(foma_fsm_minimize(foma_fsm_minus(foma_fsm_copy(self.fsthandle),foma_fsm_copy(other.fsthandle))))))
@@ -279,8 +297,8 @@ class FST(object):
         if self.fsthandle and other.fsthandle:
             return (not self.__eq__(other)) and bool(c_int(foma_fsm_isempty(foma_fsm_minimize(foma_fsm_minus(foma_fsm_copy(self.fsthandle),foma_fsm_copy(other.fsthandle))))))
         else:
-            raise ValueError('Undefined FST')        
-        
+            raise ValueError('Undefined FST')
+
     def __or__(self, other):
         return self.union(other)
 
@@ -292,7 +310,7 @@ class FST(object):
             return bool(c_int(foma_fsm_equivalent(foma_fsm_copy(self.fsthandle), foma_fsm_copy(other.fsthandle))))
         else:
             raise ValueError('Undefined FST')
-    
+
     def __ne__(self, other):
         return not(self.__eq__(other))
 
@@ -303,13 +321,13 @@ class FST(object):
             return True
         except StopIteration:
             return False
-                
+
     def __call__(self, other):
         if isinstance(other, FST.string_type):
             return FST("{" + other + "}").compose(self)
         else:
             return other.compose(self)
-    
+
     def __invert__(self):
         new = FST()
         new.fsthandle = self._fomacallunary(foma_fsm_complement)
@@ -317,7 +335,7 @@ class FST(object):
 
     def __iter__(self):
         return self._apply(foma_apply_upper_words, word = None, tokenize = False)
-    
+
     def _apply(self, applyf, word = None, tokenize = False):
         if not self.fsthandle:
             raise ValueError('FST not defined')
@@ -342,16 +360,16 @@ class FST(object):
                 output = applyf(c_void_p(applyerhandle), None)
             else:
                 output = applyf(c_void_p(applyerhandle))
-                    
+
     def words(self, tokenize = False):
         return self._apply(foma_apply_words, word = None, tokenize = tokenize)
 
     def lowerwords(self, tokenize = False):
         return self._apply(foma_apply_lower_words, word = None, tokenize = tokenize)
-                    
+
     def upperwords(self, tokenize = False):
         return self._apply(foma_apply_upper_words, word = None, tokenize = tokenize)
-        
+
     def apply_down(self, word, tokenize = False):
         return self._apply(foma_apply_down, word = word, tokenize = tokenize)
 
@@ -369,7 +387,7 @@ class FST(object):
             return handle
         else:
             raise ValueError('Undefined FST')
-        
+
     def _fomacallbinary(self, other, func, minimize = True):
         if self.fsthandle and other.fsthandle:
             handle = func(foma_fsm_copy(self.fsthandle), foma_fsm_copy(other.fsthandle))
@@ -378,7 +396,7 @@ class FST(object):
             return handle
         else:
             raise ValueError('Undefined FST')
-        
+
     def union(self, other, minimize = True):
         new = FST()
         new.fsthandle = self._fomacallbinary(other, foma_fsm_union, minimize)
@@ -403,7 +421,7 @@ class FST(object):
         new = FST()
         new.fsthandle = self._fomacallbinary(other, foma_fsm_compose, minimize)
         return new
-    
+
     def lower(self, minimize = True):
         new = FST()
         new.fsthandle = self._fomacallunary(foma_fsm_lower, minimize)
@@ -419,7 +437,7 @@ class FST(object):
         eps_sym = FST('□')
         new.fsthandle = foma_fsm_flatten(foma_fsm_copy(self.fsthandle), foma_fsm_copy(eps_sym.fsthandle))
         return new
-    
+
 class MTFSM(FST):
 
     def __init__(self, regex = False, numtapes = 2):
@@ -435,8 +453,8 @@ class MTFSM(FST):
         else:
             self.fsthandle = None
             self.regex = None
-        
-        
+
+
     def __str__(self):
         if not self.fsthandle:
             raise ValueError('FSM not defined')
@@ -449,7 +467,7 @@ class MTFSM(FST):
         s += 'Minimized: %i\n' % self.fsthandle.contents.is_minimized
         s += 'Numtapes: %i\n' % self.numtapes
         return s
-    
+
     def parse(self, word):
         #[word/□ .o. [0:?^(numtapes-1) ?]*].l & Grammar ;
         m = self.numtapes
@@ -457,9 +475,9 @@ class MTFSM(FST):
         reg = FST(regx)
         gr = FST()
         gr.fsthandle = foma_fsm_copy(self.fsthandle)
-        res = MTFSM(reg.intersect(gr), numtapes = m)        
+        res = MTFSM(reg.intersect(gr), numtapes = m)
         return res
-    
+
     def join(self, other):
         """Joins two multitape FSMs by composition. E.g.
             [ a d ]     [ c □ □ ]                  [ a d □ ]
@@ -468,7 +486,7 @@ class MTFSM(FST):
                                                    [ d f g ]
                                                    [ e f g ] """
 
-        m = self.numtapes        
+        m = self.numtapes
         n = other.numtapes
         pada = FST('[0:□^' + str(m) +' [0:?^' + str(n-1) + ' - 0:□^' + str(n-1) + '] | ?^' + str(m) + ' 0:?^' + str(n-1) + ']*')
         padb = FST('[[0:?^' + str(m-1) + ' - 0:□^' + str(m-1) + ' ] 0:□^' + str(n) + '| 0:?^' + str(m-1) + ' ?^' + str(n) + ']*')
