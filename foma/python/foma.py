@@ -24,6 +24,27 @@ from ctypes.util import find_library
 fomalibpath = find_library('foma')
 foma = cdll.LoadLibrary(fomalibpath)
 
+class FSMStatestruct(Structure):
+    _fields_ = [
+        ("state_no", c_int),
+        ("in", c_short),
+        ("out", c_short),
+        ("target", c_int),
+        ("final_state", c_char),
+        ("start_state", c_char)
+    ]
+
+    # def __getattr__(self, name):
+    #     # Have to name 'ins' because 'in' is a keyword in Python.
+    #     # However, the name above must be the same for ctypes to retrieve the right value.
+    #     # Renamed out -> outs for consistency.
+    #     if name == 'ins':
+    #         return getattr(self, 'in')
+    #     elif name == 'out':
+    #         return getattr(self, 'out')
+    #     else:
+    #         # For the error message
+    #         return super().__getattr__(name)
 
 class FSTstruct(Structure):
     _fields_ = [
@@ -44,7 +65,8 @@ class FSTstruct(Structure):
         ("arcs_sorted_out", c_int),
         ("fsm_state", c_void_p),
         ("sigma", c_void_p),
-        ("medlookup", c_void_p)
+        ("medlookup", c_void_p),
+        ("states", POINTER(FSMStatestruct))
     ]
 
 
@@ -101,6 +123,8 @@ foma_fsm_read_binary_file = foma.fsm_read_binary_file
 foma_fsm_read_binary_file.restype = POINTER(FSTstruct)
 foma_fsm_read_prolog = foma.fsm_read_prolog
 foma_fsm_read_prolog.restype = POINTER(FSTstruct)
+foma_fsm_write_prolog = foma.foma_write_prolog
+foma_fsm_write_prolog.restype = c_int
 
 """Define functions."""
 foma_add_defined = foma.add_defined
@@ -237,6 +261,12 @@ class FST(object):
         else:
             self.fsthandle = None
         self.getitemapplyer = None
+
+    def save_prolog(self, filename):
+        res = foma_fsm_write_prolog(self.fsthandle, c_char_p(FST.encode(filename)))
+        if res != 1:
+            raise ValueError("File error saving to {}".format(filename))
+        return res
 
     def __getitem__(self, key):
         if not self.fsthandle:
